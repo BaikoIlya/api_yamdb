@@ -1,11 +1,28 @@
 from django.urls import path, include
 from rest_framework.routers import SimpleRouter
 from .views import UserSignUp, ObtainPairView, UserMe, UsersViewSet
+from .views import CategoryViewSet, GenreViewSet
+from .views import TitleViewSet
 
+app_name = 'api'
 
 router = SimpleRouter()
-
 router.register('users', UsersViewSet)
+router.register(
+    'categories',
+    CategoryViewSet,
+    basename='categories'
+)
+router.register(
+    'genres',
+    GenreViewSet,
+    basename='genres'
+)
+router.register(
+    'titles',
+    TitleViewSet,
+    basename='titles'
+)
 
 urlpatterns = [
     path(
