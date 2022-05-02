@@ -1,25 +1,27 @@
 import random
 
 from django.core.mail import EmailMessage
-from django.db.models import Avg
-from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import viewsets, permissions, filters, status
+from rest_framework import filters, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend
 
 from .filters import TitleFilter
-from .serializers import (
-    UserAuthSerializer, MyTokenObtainPairSerializer,
-    UserMeSerializer, UsersSerializer,
-    CategorySerializer, GenreSerializer,
-    TitleCreateSerializer, TitleViewSerializer,
+from .mixins import (
+    CreateDestroyListGenericMixin,
+    CreateListDestroyUpdateRetrieveMixin,
 )
-from .permission import UserAdminOnly, IsAdminOrReadOnly
-from .mixins import CreateDeleteListViewset
-from user.models import User, Confirmation
+from .permission import UserAdminOnly
+from .serializers import (
+    CategorySerializer, GenreSerializer,
+    MyTokenObtainPairSerializer, TitleCreateSerializer,
+    TitleViewSerializer, UserAuthSerializer,
+    UserMeSerializer, UsersSerializer,
+)
 from titles.models import Category, Genre, Title
+from user.models import Confirmation, User
 
 
 def generate_code():
@@ -136,47 +138,46 @@ class UsersViewSet(viewsets.ModelViewSet):
     search_fields = ('username',)
 
 
-class CategoryViewSet(CreateDeleteListViewset):
+class CategoryViewSet(CreateDestroyListGenericMixin):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = (IsAdminOrReadOnly,)
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
     pagination_class = PageNumberPagination
-    search_fields = ('name',)
-    lookup_field = 'slug'
-    filter_backends = (filters.SearchFilter,)
 
     def get_permissions(self):
-        if self.action == 'create' or self.action == 'destroy':
+        if self.request.method == 'POST' or self.request.method == 'DELETE':
             return permissions.IsAuthenticated(), UserAdminOnly(),
         return super().get_permissions()
 
 
-class GenreViewSet(CreateDeleteListViewset):
+class GenreViewSet(CreateDestroyListGenericMixin):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
     pagination_class = PageNumberPagination
-    search_fields = ('name',)
-    lookup_field = 'slug'
-    filter_backends = (filters.SearchFilter,)
 
     def get_permissions(self):
-        if self.action == 'create' or self.action == 'destroy':
+        if self.request.method == 'POST' or self.request.method == 'DELETE':
             return permissions.IsAuthenticated(), UserAdminOnly(),
         return super().get_permissions()
 
 
-class TitleViewSet(viewsets.ModelViewSet):
+class TitleViewSet(CreateListDestroyUpdateRetrieveMixin):
     queryset = Title.objects.all()
-    # queryset = Title.objects.annotate(
-    #     rating=Avg('reviews__score')).all()
-    permission_classes = (IsAdminOrReadOnly,)
+    serializer_class = TitleViewSerializer
+    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
     pagination_class = PageNumberPagination
     filter_backends = (DjangoFilterBackend,)
     filterset_class = TitleFilter
 
     def get_serializer_class(self):
-        # if self.request.method in permissions.SAFE_METHODS:
-        # if self.action in ('list', 'retrieve'):
-        if self.request.method in ('POST', 'PATCH',):
+        if self.request.method in permissions.SAFE_METHODS:
             return TitleCreateSerializer
         return TitleViewSerializer
+
+    def get_permissions(self):
+        if (self.request.method == 'POST'
+           or self.request.method == 'PATCH'
+           or self.request.method == 'DELETE'):
+            return permissions.IsAuthenticatedOrReadOnly(), UserAdminOnly(),
+        return super().get_permissions()
