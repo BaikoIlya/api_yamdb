@@ -1,8 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import SimpleRouter
 from .views import UserSignUp, ObtainPairView, UserMe, UsersViewSet
-from .views import CategoryViewSet, GenreViewSet
-from .views import TitleViewSet
+from .views import CategoryViewSet, GenreViewSet, ReviewViewSet
+from .views import TitleViewSet, CommentViewSet
 
 app_name = 'api'
 
@@ -22,6 +22,16 @@ router.register(
     'titles',
     TitleViewSet,
     basename='titles'
+)
+router.register(
+    r'titles/(?P<title_id>[\d]+)/reviews',
+    ReviewViewSet,
+    basename='reviews',
+)
+router.register(
+    r'titles/(?P<title_id>[\d]+)/reviews/(?P<review_id>[\d]+)/comments',
+    CommentViewSet,
+    basename='comments',
 )
 
 urlpatterns = [

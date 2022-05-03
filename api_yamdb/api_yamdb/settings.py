@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'user',
     'api',
     'titles',
+    'reviews',
 ]
 
 MIDDLEWARE = [
@@ -128,3 +129,5 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = 'user.User'
+
+EMPTY_VALUE_DISPLAY = '-пусто-'

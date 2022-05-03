@@ -1,6 +1,10 @@
 import random
 
+from django.db.models import Avg
+from django.db.models.functions import Round
+from django.shortcuts import get_object_or_404
 from django.core.mail import EmailMessage
+from rest_framework.decorators import action
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.response import Response
@@ -13,15 +17,17 @@ from .mixins import (
     CreateDestroyListGenericMixin,
     CreateListDestroyUpdateRetrieveMixin,
 )
-from .permission import UserAdminOnly
+from .permission import UserAdminOnly, ReviewAndCommentPermission
 from .serializers import (
     CategorySerializer, GenreSerializer,
     MyTokenObtainPairSerializer, TitleCreateSerializer,
     TitleViewSerializer, UserAuthSerializer,
-    UserMeSerializer, UsersSerializer,
+    UserMeSerializer, UsersSerializer, ReviewSerializer,
+    CommentSerializer,
 )
 from titles.models import Category, Genre, Title
 from user.models import Confirmation, User
+from reviews.models import Review
 
 
 def generate_code():
@@ -181,3 +187,37 @@ class TitleViewSet(CreateListDestroyUpdateRetrieveMixin):
            or self.request.method == 'DELETE'):
             return permissions.IsAuthenticatedOrReadOnly(), UserAdminOnly(),
         return super().get_permissions()
+
+    @action(detail=False, methods=['get'])
+    def get_queryset(self):
+        return Title.objects.annotate(
+            rating=Round(Avg('reviews__score'), precision=1)
+        )
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = ReviewSerializer
+    permission_classes = (ReviewAndCommentPermission,)
+    pagination_class = PageNumberPagination
+
+    def perform_create(self, serializer):
+        title = get_object_or_404(Title, pk=self.kwargs.get('title_id'))
+        serializer.save(author=self.request.user, title=title)
+
+    def get_queryset(self):
+        title = get_object_or_404(Title, pk=self.kwargs.get('title_id'))
+        return title.reviews.all()
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    serializer_class = CommentSerializer
+    permission_classes = (ReviewAndCommentPermission,)
+    pagination_class = PageNumberPagination
+
+    def perform_create(self, serializer):
+        review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))
+        serializer.save(author=self.request.user, review=review)
+
+    def get_queryset(self):
+        review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))
+        return review.comments.all()
