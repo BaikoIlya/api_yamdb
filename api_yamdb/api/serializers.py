@@ -9,6 +9,7 @@ from user.models import User
 
 
 class UserAuthSerializer(serializers.ModelSerializer):
+    """Сериализатор для авторизации пользователя."""
     email = serializers.EmailField(required=True)
 
     class Meta:
@@ -17,11 +18,13 @@ class UserAuthSerializer(serializers.ModelSerializer):
 
 
 class MyTokenObtainPairSerializer(serializers.Serializer):
+    """Сериализатор для получения JWT токена."""
     username = serializers.CharField(max_length=150)
     confirmation_code = serializers.CharField(max_length=10)
 
 
 class UserMeSerializer(serializers.ModelSerializer):
+    """Сериализатор для просмотра собственной информации."""
     role = serializers.StringRelatedField(read_only=True)
 
     class Meta:
@@ -32,7 +35,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 
 
 class UsersSerializer(serializers.ModelSerializer):
-
+    """Сериализатор для поиска пользователей Админом."""
     class Meta:
         model = User
         fields = (
