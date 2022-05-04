@@ -133,13 +133,6 @@ class TitleViewSet(viewsets.ModelViewSet):
             return TitleViewSerializer
         return TitleCreateSerializer
 
-    def get_permissions(self):
-        if (self.request.method == 'POST'
-           or self.request.method == 'PATCH'
-           or self.request.method == 'DELETE'):
-            return permissions.IsAuthenticatedOrReadOnly(), UserAdminOnly(),
-        return super().get_permissions()
-
 
 class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = ReviewSerializer
