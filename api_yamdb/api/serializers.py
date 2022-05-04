@@ -128,6 +128,13 @@ class ReviewSerializer(serializers.ModelSerializer):
     score = serializers.IntegerField(max_value=10, min_value=0)
     rating = serializers.IntegerField(read_only=True)
 
+    def validate_score(self, value):
+        if 0 > value > 10:
+            raise serializers.ValidationError(
+                'Оценка должна быть целым числом от 0 до 10.'
+                )
+        return value
+
     def validate(self, data):
         request = self.context['request']
         author = request.user
