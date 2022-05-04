@@ -1,30 +1,31 @@
 from django.db.models import Avg
-from django.db.models.functions import Round
-from django.shortcuts import get_object_or_404
-from django.core.mail import send_mail
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import filters, permissions, status, viewsets
-from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
-from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.shortcuts import get_object_or_404
+from rest_framework import filters, permissions, status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .filters import TitleFilter
-from .mixins import (
-    CreateDestroyListGenericMixin,
-    CreateListDestroyUpdateRetrieveMixin,
+from .mixins import CreateDestroyListGenericMixin
+from .permission import (
+    IsAdminOrReadOnly,
+    ReviewAndCommentPermission,
+    UserAdminOnly,
 )
-from .permission import UserAdminOnly, ReviewAndCommentPermission
 from .serializers import (
-    CategorySerializer, GenreSerializer,
-    MyTokenObtainPairSerializer, TitleCreateSerializer,
+    CategorySerializer, CommentSerializer,
+    GenreSerializer, MyTokenObtainPairSerializer,
+    ReviewSerializer, TitleCreateSerializer,
     TitleViewSerializer, UserAuthSerializer,
-    UserMeSerializer, UsersSerializer, ReviewSerializer,
-    CommentSerializer,
+    UserMeSerializer, UsersSerializer,
 )
-from titles.models import Category, Genre, Title
-from user.models import Confirmation, User
 from reviews.models import Review
+from titles.models import Category, Genre, Title
+from user.models import User
 
 
 @api_view(['POST'])
@@ -79,7 +80,7 @@ class UsersViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UsersSerializer
     lookup_field = 'username'
-    pagination_class = PageNumberPagination
+    pagination_class = LimitOffsetPagination
     filter_backends = (filters.SearchFilter,)
     search_fields = ('username',)
 
@@ -108,39 +109,29 @@ class UsersViewSet(viewsets.ModelViewSet):
 class CategoryViewSet(CreateDestroyListGenericMixin):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
-    pagination_class = PageNumberPagination
-
-    def get_permissions(self):
-        if self.request.method == 'POST' or self.request.method == 'DELETE':
-            return permissions.IsAuthenticated(), UserAdminOnly(),
-        return super().get_permissions()
+    permission_classes = (IsAdminOrReadOnly,)
+    pagination_class = LimitOffsetPagination
 
 
 class GenreViewSet(CreateDestroyListGenericMixin):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
-    pagination_class = PageNumberPagination
-
-    def get_permissions(self):
-        if self.request.method == 'POST' or self.request.method == 'DELETE':
-            return permissions.IsAuthenticated(), UserAdminOnly(),
-        return super().get_permissions()
+    permission_classes = (IsAdminOrReadOnly,)
+    pagination_class = LimitOffsetPagination
 
 
-class TitleViewSet(CreateListDestroyUpdateRetrieveMixin):
-    queryset = Title.objects.all()
-    serializer_class = TitleViewSerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
-    pagination_class = PageNumberPagination
+class TitleViewSet(viewsets.ModelViewSet):
+    queryset = Title.objects.annotate(
+        rating=Avg('reviews__score')).all()
+    permission_classes = (IsAdminOrReadOnly,)
+    pagination_class = LimitOffsetPagination
     filter_backends = (DjangoFilterBackend,)
     filterset_class = TitleFilter
 
     def get_serializer_class(self):
         if self.request.method in permissions.SAFE_METHODS:
-            return TitleCreateSerializer
-        return TitleViewSerializer
+            return TitleViewSerializer
+        return TitleCreateSerializer
 
     def get_permissions(self):
         if (self.request.method == 'POST'
@@ -149,17 +140,11 @@ class TitleViewSet(CreateListDestroyUpdateRetrieveMixin):
             return permissions.IsAuthenticatedOrReadOnly(), UserAdminOnly(),
         return super().get_permissions()
 
-    @action(detail=False, methods=['get'])
-    def get_queryset(self):
-        return Title.objects.annotate(
-            rating=Round(Avg('reviews__score'), precision=1)
-        )
-
 
 class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = ReviewSerializer
     permission_classes = (ReviewAndCommentPermission,)
-    pagination_class = PageNumberPagination
+    pagination_class = LimitOffsetPagination
 
     def perform_create(self, serializer):
         title = get_object_or_404(Title, pk=self.kwargs.get('title_id'))
@@ -173,7 +158,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = (ReviewAndCommentPermission,)
-    pagination_class = PageNumberPagination
+    pagination_class = LimitOffsetPagination
 
     def perform_create(self, serializer):
         review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))
