@@ -9,19 +9,34 @@ from user.models import User
 
 
 class UserAuthSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(required=True)
+    """Сериализатор для авторизации пользователя."""
 
     class Meta:
         model = User
         fields = ('username', 'email',)
 
+    def validate(self, data):
+        if User.objects.filter(username=data['username']).exists():
+            raise ValidationError('Пользователь c таким именем существует')
+        if data['username'] == 'me':
+            raise ValidationError(
+                'Пользователь c таким именем нельзя зарегистрировать'
+            )
+        if User.objects.filter(email=data['email']).exists():
+            return ValidationError(
+                'Такая электронная почта уже зарегистрирована'
+            )
+        return data
+
 
 class MyTokenObtainPairSerializer(serializers.Serializer):
+    """Сериализатор для получения JWT токена."""
     username = serializers.CharField(max_length=150)
     confirmation_code = serializers.CharField(max_length=10)
 
 
 class UserMeSerializer(serializers.ModelSerializer):
+    """Сериализатор для просмотра собственной информации."""
     role = serializers.StringRelatedField(read_only=True)
 
     class Meta:
@@ -32,7 +47,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 
 
 class UsersSerializer(serializers.ModelSerializer):
-
+    """Сериализатор для поиска пользователей Админом."""
     class Meta:
         model = User
         fields = (
