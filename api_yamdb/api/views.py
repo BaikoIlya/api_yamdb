@@ -1,17 +1,14 @@
-import random
-
 from django.db.models import Avg
 from django.db.models.functions import Round
 from django.shortcuts import get_object_or_404
-from django.core.mail import EmailMessage
-from rest_framework.decorators import action
+from django.core.mail import send_mail
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
-
+from django.contrib.auth.tokens import default_token_generator
 from .filters import TitleFilter
 from .mixins import (
     CreateDestroyListGenericMixin,
@@ -30,108 +27,51 @@ from user.models import Confirmation, User
 from reviews.models import Review
 
 
-def generate_code():
-    random.seed()
-    value = str(random.randint(10000, 99999))
-    if Confirmation.objects.filter(confirmation_code=value).exists():
-        return generate_code()
-    return value
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def user_sign_up(request):
+    serializer = UserAuthSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    future_user = User.objects.get(
+        username=request.data['username'],
+        email=request.data['email'],
+    )
+    code = default_token_generator.make_token(future_user)
+    to_email = request.data['email']
+    send_mail(
+        'Confirmation_code',
+        "Добро пожаловать {0}!"
+        " Ваш код для получения JWT-токена: {1}".format(
+            request.data['username'],
+            code
+        ),
+        'api@email.com',
+        [to_email],
+        fail_silently=False,
+
+    )
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class UserSignUp(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        serializer = UserAuthSerializer(data=request.data)
-        if serializer.is_valid():
-            if User.objects.filter(username=request.data['username']).exists():
-                return Response(
-                    data='Пользователь c таким именем существует',
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if request.data['username'] == 'me':
-                return Response(
-                    data='Пользователь c таким именем нельзя зарегистрировать',
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if User.objects.filter(email=request.data['email']).exists():
-                return Response(
-                    data='Такая электронная почта уже зарегистрирована',
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            serializer.save()
-            code = generate_code()
-            future_user = User.objects.get(
-                username=request.data['username'],
-                email=request.data['email'],
-            )
-            Confirmation.objects.create(
-                user=future_user,
-                confirmation_code=code,
-            )
-            mail_subject = 'Confirmation_code'
-            message = (
-                "Добро пожаловать {0}!"
-                " Ваш код для получения JWT-токена: {1}".format(
-                    self.request.data['username'],
-                    code
-                )
-            )
-            to_email = request.data['email']
-            email = EmailMessage(mail_subject, message, to=[to_email])
-            email.send()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ObtainPairView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        serializer = MyTokenObtainPairSerializer(data=request.data)
-        if serializer.is_valid():
-            if User.objects.filter(username=request.data['username']).exists():
-                cur_user = User.objects.get(username=request.data['username'])
-                if Confirmation.objects.filter(
-                        user=cur_user,
-                        confirmation_code=request.data['confirmation_code']
-                ).exists():
-                    user = Confirmation.objects.get(
-                        user=cur_user,
-                        confirmation_code=request.data['confirmation_code']
-                    )
-                    refresh = RefreshToken.for_user(user)
-                    token = {
-                        'token': str(refresh.access_token)
-                    }
-                    return Response(token, status=status.HTTP_200_OK)
-                return Response(
-                    data='Пользователь и код не совпадают',
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            return Response(
-                data='Нет такого пользователя',
-                status=status.HTTP_404_NOT_FOUND
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class UserMe(APIView):
-    def get(self, request):
-        user = request.user
-        serializer = UserMeSerializer(user)
-        return Response(serializer.data)
-
-    def patch(self, request):
-        user = request.user
-        serializer = UserMeSerializer(user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save(
-                username=self.request.user.username,
-                email=self.request.user.email
-            )
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def obtain_pair(request):
+    serializer = MyTokenObtainPairSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    cur_user = get_object_or_404(User, username=request.data['username'])
+    if default_token_generator.check_token(
+            cur_user, request.data['confirmation_code']
+    ):
+        refresh = RefreshToken.for_user(cur_user)
+        token = {
+            'token': str(refresh.access_token)
+        }
+        return Response(token, status=status.HTTP_200_OK)
+    return Response(
+        data='Пользователь и код не совпадают',
+        status=status.HTTP_400_BAD_REQUEST
+    )
 
 
 class UsersViewSet(viewsets.ModelViewSet):
@@ -142,6 +82,27 @@ class UsersViewSet(viewsets.ModelViewSet):
     pagination_class = PageNumberPagination
     filter_backends = (filters.SearchFilter,)
     search_fields = ('username',)
+
+    @action(
+        detail=False,
+        methods=['get', 'patch'],
+        url_path='me',
+        permission_classes=[permissions.IsAuthenticated, ],
+    )
+    def me(self, request):
+        if self.request.method == 'PATCH':
+            user = self.request.user
+            serializer = UserMeSerializer(user, data=request.data,
+                                          partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(
+                username=self.request.user.username,
+                email=self.request.user.email
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        user = self.request.user
+        serializer = UserMeSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class CategoryViewSet(CreateDestroyListGenericMixin):
