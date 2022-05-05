@@ -22,15 +22,3 @@ class User(AbstractUser):
         choices=CHOICES,
         default='user',
     )
-
-
-class Confirmation(models.Model):
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='confirmations',
-    )
-    confirmation_code = models.CharField(
-        'Код подтверждения',
-        max_length=10,
-    )

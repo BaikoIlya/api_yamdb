@@ -40,6 +40,8 @@ def user_sign_up(request):
     )
     code = default_token_generator.make_token(future_user)
     to_email = request.data['email']
+    sender = 'api'
+    email_domen = '@email.com'
     send_mail(
         'Confirmation_code',
         "Добро пожаловать {0}!"
@@ -47,7 +49,7 @@ def user_sign_up(request):
             request.data['username'],
             code
         ),
-        'api@email.com',
+        sender + email_domen,
         [to_email],
         fail_silently=False,
 
@@ -76,7 +78,7 @@ def obtain_pair(request):
 
 
 class UsersViewSet(viewsets.ModelViewSet):
-    permission_classes = (permissions.IsAuthenticated, UserAdminOnly,)
+    permission_classes = (permissions.IsAuthenticated, UserAdminOnly)
     queryset = User.objects.all()
     serializer_class = UsersSerializer
     lookup_field = 'username'
@@ -88,7 +90,7 @@ class UsersViewSet(viewsets.ModelViewSet):
         detail=False,
         methods=['get', 'patch'],
         url_path='me',
-        permission_classes=[permissions.IsAuthenticated, ],
+        permission_classes=[permissions.IsAuthenticated],
     )
     def me(self, request):
         if self.request.method == 'PATCH':
